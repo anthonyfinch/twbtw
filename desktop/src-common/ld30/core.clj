@@ -176,12 +176,21 @@
     (doto entity (label! :set-text (format "Score: %d" (:score screen))))
     :else entity))
 
+(defn play-alert-sound
+  [screen entities]
+  (sound! (:alert-sound screen) :play)
+  entities)
+
 (defn pulse-entities
   [screen entities]
   (let [entities(for [e entities]
                   (update-entity screen entities e))]
-    (if (some #(>= (:anger %) anger-limit) (filter :location? entities))
+    (cond 
+      (some #(>= (:anger %) anger-limit) (filter :location? entities))
       (set-screen! ld30 end-screen)
+      (some #(>= (:anger %) (- anger-limit 5)) (filter :location? entities))
+      (play-alert-sound screen entities)
+      :else
       entities
     )))
 
@@ -193,6 +202,7 @@
 (defn add-link
   [screen entities loc active-link-point]
   (update! screen :active-link-point false)
+  (sound! (:connect-sound screen) :play)
   (conj entities (make-link loc (get-entity-at-point entities active-link-point)))) 
 
 (defn add-location
@@ -210,14 +220,22 @@
       (add-location screen entities pos)
       entities)))
 
+(defn remove-link
+  [screen entities e]
+  (sound! (:remove-sound screen) :play)
+  (filter #(= (identical? % e) false) entities))
+
 (defscreen main-screen
   :on-show
   (fn [screen entities]
     (update! screen 
              :score 0
              :max-links 3
+             :alert-sound (sound "clip2.wav")
+             :remove-sound (sound "remove.wav")
+             :connect-sound (sound "connect.wav")
              :renderer (stage))
-    (add-timer! screen :pulse 1 1)
+    (add-timer! screen :pulse 2 2)
     (add-timer! screen :new-loc 15 15)
     (let [locs[(make-location 40 35)
                (make-location 400 150)
@@ -266,7 +284,7 @@
                      (add-link screen entities e active-link-point)
                      (make-active-link screen entities e))
                    (:link? e)
-                   (filter #(= (identical? % e) false) entities)
+                   (remove-link screen entities e)
                    :else
                    entities)
                  entities)))
