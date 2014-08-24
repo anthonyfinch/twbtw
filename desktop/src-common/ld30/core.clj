@@ -3,6 +3,20 @@
             [play-clj.ui :refer :all]
             [play-clj.math :refer :all]))
 
+(def products-list
+  [:books
+   :costumes
+   :knickknacks
+   :cakes
+   :bovril
+   :hammocks
+   :pie
+   :kites
+   :fulfillment
+   :sourness
+   :ennui
+   ])
+
 (defn get-entity-at-point
   [entities point]
   (find-first (fn [{:keys [x y width height] :or {x 0 y 0 width 0 height 0} :as entity}]
@@ -16,15 +30,26 @@
 
 (defn set-location-wants
   [entity]
-  (let [wants (+ (rand-int 10) 1)]
+  (assoc entity
+        :makes (rand-nth products-list)))
+
+(defn set-location-makes
+  [entity]
+  (let [wants (+ (rand-int 10) 1)
+        wants-item (rand-nth products-list)]
     (assoc entity
-           :wants wants)))
+           :wants wants
+           :wants-item wants-item)))
 
 (defn update-location
   [loc]
-  (let [els(for [el (:entities loc)]
+  (let [loc(if (< (:wants loc) 1)
+             (set-location-makes loc)
+             loc)
+        els(for [el (:entities loc)]
             (case (:id el)
-              :wants-label (doto el (label! :set-text (format "Wants %d centurion hats" (:wants loc))))
+              :makes-label (doto el (label! :set-text (format "Makes %s" (name (:makes loc)))))
+              :wants-label (doto el (label! :set-text (format "Wants %d %s" (:wants loc) (name (:wants-item loc)))))
               :angry-label (doto el (label! :set-text (format "Angry! %d" (:anger loc))))
               el))]
     (merge loc (apply bundle els))))
@@ -33,17 +58,17 @@
   [x y]
   (let [w 200
         h 40]
-    (set-location-wants (assoc (bundle (assoc (shape :filled
+    (update-location (set-location-makes (set-location-wants (assoc (bundle (assoc (shape :filled
                                               :set-color (color :red)
                                               :rect 0 0 w h)
                                               :id :background)
-                                       (assoc (label "Makes: Centurion Hats" (color :white))
+                                       (assoc (label "" (color :white))
                                               :y (+ y 15)
                                               :id :makes-label)
-                                       (assoc (label "Angry! 0" (color :white))
+                                       (assoc (label "" (color :white))
                                               :y (+ y 30)
                                               :id :angry-label)
-                                       (assoc (label "Wants 4 Centurion Hats" (color :white))
+                                       (assoc (label "" (color :white))
                                               :id :wants-label))
                                :x x 
                                :y y 
@@ -52,11 +77,12 @@
                                :height h 
                                :location? true
                                :anger 0
-                               :center {:x (+ x (/ w 2)) :y (+ y (/ h 2))}))))
+                               :center {:x (+ x (/ w 2)) :y (+ y (/ h 2))}))))))
 
 
 (defn make-link
   [e1 e2]
+  (println e1 e1)
   (let [x1 (:x (:center e1))
         y1 (:y (:center e1))
         x2 (:x (:center e2))
@@ -85,9 +111,8 @@
 
 (defn connected-to-want 
   [loc entities]
-  (let [link-count(count (get-linked-locs loc entities))]
-    (> link-count 0))
-  false)
+  (let [link-count(count (filter #(= (:makes %) (:wants-item loc)) (get-linked-locs loc entities)))]
+    (> link-count 0)))
 
 
 (defn update-entity 
@@ -110,10 +135,22 @@
   [screen entities]
   (let [entities(for [e entities]
                   (update-entity screen entities e))]
-    (if (every? #(>= (:anger %) 4) (filter :location? entities))
+    (if (every? #(>= (:anger %) 10) (filter :location? entities))
       (doall [(println "GAME OVER, MAN, GAME OVER"), (app! :exit)])
       entities
     )))
+
+(defn make-active-link
+  [screen entities loc]
+  (println "placing first point")
+  (update! screen :active-link-point (:center loc))
+  entities)
+
+(defn add-link
+  [screen entities loc active-link-point]
+  (println "placing second point")
+  (update! screen :active-link-point false)
+  (conj entities (make-link loc (get-entity-at-point entities active-link-point)))) 
 
 (defscreen main-screen
   :on-show
@@ -149,10 +186,15 @@
 
   :on-touch-down
   (fn [screen entities]
-    (println (let [e (get-entity-at-cursor screen entities (:input-x screen) (:input-y screen))]
-               (if (and e (:location? e)) (get-linked-locs e entities))
-               ))
-    entities)
+    (let [e (get-entity-at-cursor screen entities (:input-x screen) (:input-y screen))
+          active-link-point(:active-link-point screen)]
+               (if (and e (:location? e)) 
+                 (cond 
+                   (and active-link-point (not= active-link-point (:center e))) 
+                   (add-link screen entities e active-link-point)
+                   :else
+                   (make-active-link screen entities e))
+                 entities)))
 
   :on-timer
   (fn [screen entities]
