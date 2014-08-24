@@ -1,9 +1,17 @@
 (ns ld30.core
   (:require [play-clj.core :refer :all]
             [play-clj.ui :refer :all]
+            [play-clj.g2d :refer :all]
             [play-clj.math :refer :all]))
 
-(def ^:const anger-limit 50)
+(declare ld30 main-screen end-screen)
+
+(def ^:const anger-limit 25)
+(def ^:const screen-width 1024)
+(def ^:const screen-height 768)
+(def ^:const loc-width 200)
+(def ^:const loc-height 40)
+(def ^:const circ-radius 10)
 
 (def ^:const products-list
   [:books
@@ -19,11 +27,19 @@
    :ennui
    ])
 
+(defn abs [n] (max n (- n)))
+
+(defn get-entity-in-box
+  [entities rect]
+  (find-first (fn [{:keys [box-x box-y width height] :or {box-x 0 box-y 0 width 0 height 0} :as entity}]
+                (rectangle! (rectangle box-x box-y width height) :overlaps rect))
+              (filter #(not= (:id %) :background-tile) entities)))
+
 (defn get-entity-at-point
   [entities point]
-  (find-first (fn [{:keys [x y width height] :or {x 0 y 0 width 0 height 0} :as entity}]
-                (rectangle! (rectangle x y width height) :contains (:x point) (:y point)))
-              entities))
+  (find-first (fn [{:keys [box-x box-y width height] :or {box-x 0 box-y 0 width 0 height 0} :as entity}]
+                (rectangle! (rectangle box-x box-y width height) :contains (:x point) (:y point)))
+              (filter #(not= (:id %) :background-tile) entities)))
 
 (defn get-entity-at-cursor
   [screen entities input-x input-y]
@@ -78,6 +94,8 @@
                                               :id :wants-label))
                                :x x 
                                :y y 
+                               :box-x x
+                               :box-y y
                                :width w 
                                :id :temp
                                :height h 
@@ -93,12 +111,25 @@
   (let [x1 (:x (:center e1))
         y1 (:y (:center e1))
         x2 (:x (:center e2))
-        y2 (:y (:center e2))]
-    (assoc (shape :line 
-                  :line x1 y1 x2 y2
-                  :set-color (color :cyan))
+        y2 (:y (:center e2))
+        lowx (min x1 x2)
+        highx (max x1 x2)
+        lowy (min y1 y2)
+        highy (max y1 y2)
+        midx (+ lowx (/ (- highx lowx) 2))
+        midy (+ lowy (/ (- highy lowy) 2))]
+    (assoc (bundle (shape :line 
+                          :line x1 y1 x2 y2
+                          :set-color (color :cyan))
+                   (shape :filled
+                          :circle midx midy circ-radius
+                          :set-color (color :cyan)))
+           :box-x (- midx (/ circ-radius 2))
+           :box-y (- midy (/ circ-radius 2))
            :link? true
            :id :temp
+           :height (* circ-radius 2)
+           :width (* circ-radius 2)
            :points [{:x x1 :y y1}, {:x x2, :y y2}])))
 
 (defn is-active-link
@@ -121,6 +152,13 @@
   (let [link-count(count (filter #(= (:makes %) (:wants-item loc)) (get-linked-locs loc entities)))]
     (> link-count 0)))
 
+(defn get-locations
+  [entities]
+  (filter :location? entities))
+
+(defn get-total-links
+  [entities]
+  (count (filter :link? entities)))
 
 (defn update-entity 
   [screen entities entity]
@@ -145,7 +183,7 @@
   (let [entities(for [e entities]
                   (update-entity screen entities e))]
     (if (some #(>= (:anger %) anger-limit) (filter :location? entities))
-      (doall [(println "GAME OVER, MAN, GAME OVER"), (app! :exit)])
+      (set-screen! ld30 end-screen)
       entities
     )))
 
@@ -159,22 +197,48 @@
   (update! screen :active-link-point false)
   (conj entities (make-link loc (get-entity-at-point entities active-link-point)))) 
 
+(defn add-location
+  [screen entities pos]
+  (update! screen :max-links (+ (:max-links screen) 1))
+  (conj entities (update-location (make-location (rectangle! pos :get-x) (rectangle! pos :get-y)) entities)))
+
+(defn generate-location
+  [screen entities]
+  (let [pos(
+            find-first #(= (get-entity-in-box entities %) nil) 
+            (take 1000 (repeatedly 
+              (fn [] (rectangle (rand-int (- screen-width loc-width)) (rand-int (- screen-height loc-height)) loc-width loc-height)))))]
+    (if pos
+      (add-location screen entities pos)
+      entities)))
+
 (defscreen main-screen
   :on-show
   (fn [screen entities]
     (update! screen 
              :score 0
+             :max-links 3
              :renderer (stage))
     (add-timer! screen :pulse 1 1)
+    (add-timer! screen :new-loc 15 15)
     (let [locs[(make-location 40 35)
                (make-location 400 150)
-               (make-location 250 500)
-               (make-location 60 400)]
+               (make-location 250 500)]
           locs(for [l locs]
                 (update-location l locs))]
-      (conj locs (assoc (label "Score: 0" (color :white))
-            :id :score
-            :x 15 :y 570))))
+      (cons (assoc (texture "tile1.png")
+                   :id :background-tile)
+            (conj locs 
+            (assoc (label "Score: 0" (color :white))
+                        :id :score
+                        :x 15 :y (- screen-height 35))
+            (assoc (label "" (color :white))
+                          :id :angriest-label
+                          :x 15 :y (- screen-height 50))
+            (assoc (label "" (color :white))
+                          :id :links-label
+                          :x 15 :y (- screen-height 75))
+            ))))
 
   :on-key-down
   (fn [screen entities]
@@ -190,20 +254,52 @@
   :on-touch-down
   (fn [screen entities]
     (let [e (get-entity-at-cursor screen entities (:input-x screen) (:input-y screen))
-          active-link-point(:active-link-point screen)]
-               (if (and e (:location? e)) 
-                 (cond 
-                   (and active-link-point (not= active-link-point (:center e))) 
-                   (add-link screen entities e active-link-point)
+          active-link-point(:active-link-point screen)
+          total-links (get-total-links entities)
+          max-links (:max-links screen)]
+               (if e
+                 (cond
+                   (:location? e)
+                   (if (and active-link-point (not= active-link-point (:center e)) (< total-links max-links)) 
+                     (add-link screen entities e active-link-point)
+                     (make-active-link screen entities e))
+                   (:link? e)
+                   (filter #(= (identical? % e) false) entities)
                    :else
-                   (make-active-link screen entities e))
+                   entities)
                  entities)))
 
   :on-timer
   (fn [screen entities]
     (case (:id screen)
       :pulse (pulse-entities screen entities)
+      :new-loc (generate-location screen entities)
       entities))
+
+  :on-render
+  (fn [screen entities]
+    (clear!)
+    (->> (for [e entities]
+           (case (:id e)
+             :links-label (doto e (label! :set-text (format "Available links: %d" (- (:max-links screen) (get-total-links entities)))))
+             :angriest-label (doto e (label! :set-text (format "Angriest location: %d (max %d)" (apply max (map :anger (get-locations entities))) anger-limit)))
+             e))
+         (render! screen))))
+
+(defscreen end-screen
+  :on-show
+  (fn [screen entities]
+    (update! screen :renderer (stage))
+    [(assoc (label "THE END - press space to retry" (color :white))
+            :id :fps
+            :x 200 :y 350)])
+
+  :on-key-down
+  (fn [screen entities]
+    (cond
+      (= (:key screen) (key-code :space))
+      (set-screen! ld30 main-screen)
+      ))
 
   :on-render
   (fn [screen entities]

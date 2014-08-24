@@ -6,5 +6,5 @@
 
 (defn -main
   []
-  (LwjglApplication. ld30 "ld30" 800 600)
+  (LwjglApplication. ld30 "ld30" 1024 768)
   (Keyboard/enableRepeatEvents true))
