@@ -9,8 +9,8 @@
 (def ^:const anger-limit 25)
 (def ^:const screen-width 1024)
 (def ^:const screen-height 768)
-(def ^:const loc-width 200)
-(def ^:const loc-height 40)
+(def ^:const loc-width 50)
+(def ^:const loc-height 50)
 (def ^:const circ-radius 10)
 
 (def ^:const products-list
@@ -62,7 +62,6 @@
       (assoc entity
              :wants 0
              :wants-item ""))))
-
 (defn update-location
   [loc entities]
   (let [loc(if (< (:wants loc) 1)
@@ -73,37 +72,36 @@
               :makes-label (doto el (label! :set-text (format "Makes %s" (name (:makes loc)))))
               :wants-label (doto el (label! :set-text (format "Wants %d %s" (:wants loc) (name (:wants-item loc)))))
               :angry-label (doto el (label! :set-text (format "Angry! %d" (:anger loc))))
+              :background (doto el (shape! :set-color (color :red)))
               el))]
     (merge loc (apply bundle els))))
 
 (defn make-location
   [x y]
-  (let [w 200
-        h 40]
-    (set-location-makes (assoc (bundle (assoc (shape :filled
-                                              :set-color (color :red)
-                                              :rect 0 0 w h)
-                                              :id :background)
-                                       (assoc (label "" (color :white))
-                                              :y (+ y 15)
-                                              :id :makes-label)
-                                       (assoc (label "" (color :white))
-                                              :y (+ y 30)
-                                              :id :angry-label)
-                                       (assoc (label "" (color :white))
-                                              :id :wants-label))
-                               :x x 
-                               :y y 
-                               :box-x x
-                               :box-y y
-                               :width w 
-                               :id :temp
-                               :height h 
-                               :location? true
-                               :anger 0
-                               :wants-item ""
-                               :wants 0
-                               :center {:x (+ x (/ w 2)) :y (+ y (/ h 2))}))))
+  (set-location-makes (assoc (bundle (assoc (shape :filled 
+                                                   :rect 0 0 loc-width loc-height
+                                                   :set-color (color :olive))
+                                            :id :background)
+                                     (assoc (label "" (color :white))
+                                            :x (+ x 5) :y (+ y 15)
+                                            :id :makes-label)
+                                     (assoc (label "" (color :white))
+                                            :x (+ x 5) :id :angry-label)
+                                     (assoc (label "" (color :white))
+                                            :x (+ x 5) :y (- y 15)
+                                            :id :wants-label))
+                             :x x 
+                             :y y 
+                             :box-x x
+                             :box-y y
+                             :width loc-width
+                             :id :temp
+                             :height loc-height
+                             :location? true
+                             :anger 0
+                             :wants-item ""
+                             :wants 0
+                             :center {:x (+ x (/ loc-width 2)) :y (+ y (/ loc-height 2))})))
 
 
 (defn make-link
@@ -229,16 +227,20 @@
       (cons (assoc (texture "tile1.png")
                    :id :background-tile)
             (conj locs 
-            (assoc (label "Score: 0" (color :white))
-                        :id :score
-                        :x 15 :y (- screen-height 35))
-            (assoc (label "" (color :white))
-                          :id :angriest-label
-                          :x 15 :y (- screen-height 50))
-            (assoc (label "" (color :white))
-                          :id :links-label
-                          :x 15 :y (- screen-height 75))
-            ))))
+                  (assoc (label "Score: 0" (color :white))
+                         :id :score
+                         :x 15 :y (- screen-height 35))
+                  (assoc (label "" (color :white))
+                         :id :angriest-label
+                         :x 15 :y (- screen-height 50))
+                  (assoc (label "" (color :white))
+                         :id :links-label
+                         :x 15 :y (- screen-height 75))
+                  (assoc (shape :filled
+                                :rect 0 (- screen-height 100) 210 100
+                                :set-color (color :black))
+                         :id :score-blocker)
+                  ))))
 
   :on-key-down
   (fn [screen entities]
