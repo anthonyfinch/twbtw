@@ -3,7 +3,9 @@
             [play-clj.ui :refer :all]
             [play-clj.math :refer :all]))
 
-(def products-list
+(def ^:const anger-limit 50)
+
+(def ^:const products-list
   [:books
    :costumes
    :knickknacks
@@ -128,7 +130,9 @@
       (if connected
         (update! screen :score (+ (:score screen) 1)))
       (let [entity(if (and connected (:wants entity))
-                    (assoc entity :wants (- (:wants entity) 1))
+                    (assoc entity 
+                           :wants (- (:wants entity) 1)
+                           :anger (max (- (:anger entity) 1) 0))
                     (assoc entity :anger (+ (:anger entity) 1)))]
         (update-location entity entities)
       ))
@@ -140,7 +144,7 @@
   [screen entities]
   (let [entities(for [e entities]
                   (update-entity screen entities e))]
-    (if (every? #(>= (:anger %) 10) (filter :location? entities))
+    (if (some #(>= (:anger %) anger-limit) (filter :location? entities))
       (doall [(println "GAME OVER, MAN, GAME OVER"), (app! :exit)])
       entities
     )))
