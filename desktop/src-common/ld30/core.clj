@@ -67,12 +67,12 @@
   (let [loc(if (< (:wants loc) 1)
              (set-location-wants loc entities)
              loc)
+        getting-angry (< (- anger-limit (:anger loc)) 5) 
         els(for [el (:entities loc)]
             (case (:id el)
               :makes-label (doto el (label! :set-text (format "Makes %s" (name (:makes loc)))))
               :wants-label (doto el (label! :set-text (format "Wants %d %s" (:wants loc) (name (:wants-item loc)))))
               :angry-label (doto el (label! :set-text (format "Angry! %d" (:anger loc))))
-              :background (doto el (shape! :set-color (color :red)))
               el))]
     (merge loc (apply bundle els))))
 
@@ -187,7 +187,11 @@
                   (update-entity screen entities e))]
     (cond 
       (some #(>= (:anger %) anger-limit) (filter :location? entities))
-      (set-screen! ld30 end-screen)
+      (doall
+        [(remove-timer! screen :pulse)
+         (remove-timer! screen :new-loc)
+         (run! end-screen :on-update-score :score (:score screen))
+         (set-screen! ld30 end-screen)])
       (some #(>= (:anger %) (- anger-limit 5)) (filter :location? entities))
       (play-alert-sound screen entities)
       :else
@@ -310,9 +314,13 @@
   :on-show
   (fn [screen entities]
     (update! screen :renderer (stage))
-    [(assoc (label "THE END - press space to retry" (color :white))
-            :id :fps
-            :x 200 :y 350)])
+    (conj [(texture "back.png")] entities))
+
+  :on-update-score
+  (fn [screen entities]
+    [(assoc (label (format "You scored: %d" (:score screen)) (color :white))
+            :id :msg
+            :x 300 :y 450)])
 
   :on-key-down
   (fn [screen entities]
@@ -326,7 +334,26 @@
     (clear!)
     (render! screen entities)))
 
+(defscreen start-screen
+  :on-show
+  (fn [screen entities]
+    (update! screen :renderer (stage))
+    [(texture "front.png")])
+
+  :on-key-down
+  (fn [screen entities]
+    (cond
+      (= (:key screen) (key-code :space))
+      (set-screen! ld30 main-screen)
+      ))
+
+  :on-render
+  (fn [screen entities]
+    (clear!)
+    (render! screen entities)))
+
+
 (defgame ld30
   :on-create
   (fn [this]
-    (set-screen! this main-screen)))
+    (set-screen! this end-screen start-screen)))
